@@ -1,0 +1,81 @@
+services:
+  extraction_agent:
+    build: ./extraction_agent
+    container_name: extraction_agent
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./extraction_agent:/app
+    env_file:
+      - .env
+    environment:
+      - LOG_LEVEL=INFO
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s                                                                                   
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - academic_insights
+
+  normalization_agent:
+    build: ./normalization_agent
+    container_name: normalization_agent
+    ports:
+      - "8002:8002"
+    volumes:
+      - ./normalization_agent:/app
+    env_file:
+      - .env
+    environment:
+      - LOG_LEVEL=INFO
+      - PYTHONUNBUFFERED=1
+      - OPENAI_API_KEY=${OPENAI_API_KEY}  
+    restart: unless-stopped
+    depends_on:
+      extraction_agent:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - academic_insights
+
+  orchestrator_agent:
+    build: ./orchestrator_agent
+    container_name: orchestrator_agent
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./orchestrator_agent:/app
+    env_file:
+      - .env
+    environment:
+      - LOG_LEVEL=INFO
+      - PYTHONUNBUFFERED=1
+      - EXTRACTION_SERVICE=http://extraction_agent:8001
+      - NORMALIZATION_SERVICE=http://normalization_agent:8002
+    restart: unless-stopped
+    depends_on:
+      extraction_agent:
+        condition: service_healthy
+      normalization_agent:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 50s
+    networks:
+      - academic_insights
+
+networks:
+  academic_insights:
+    driver: bridge
